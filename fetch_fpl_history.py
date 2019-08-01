@@ -1,43 +1,82 @@
 import json
 import os
+import sys
 import time
 import warnings
-
+import logging
 import pandas as pd
-import progressbar
 import requests
-
 from common import DATA_DIR
+from pprint import pprint as pp
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+LOGGER = logging.getLogger(__name__)
+
 
 
 def fetch_player_history(player_id):
     """ Fetch JSON of a single player's FPL history. """
-    url = 'https://fantasy.premierleague.com/drf/element-summary/{}'.format(player_id)
+    url = 'https://fantasy.premierleague.com/api/element-summary/{}/'.format(player_id)
+    LOGGER.debug(url)
     r = requests.get(url)
-    return r.json()['history_past']
+    if r.ok:
+        return r.json()['history_past']
 
 
-def fetch_all_player_histories(max_id=1000):
+def fetch_all_player_histories(max_id=490):
     """ Fetch the histories of all players. """
     histories = []
-    bar = progressbar.ProgressBar()
-    for player_id in bar(range(1, max_id+1)):
+    for player_id in range(1, max_id+1):
         try:
             history = fetch_player_history(player_id)
-            histories += history
+            if history:
+                histories += history
         except json.decoder.JSONDecodeError:
             print('\nLast player found at id = {0}'.format(player_id - 1))
             return histories
-        time.sleep(2.5)  # Don't overload their servers
+        #time.sleep(0.25)  # Don't overload their servers
     else:
         warnings.warn('Last player_id not reached. You ought to try again '
                       'with a higher max_id')
-        return histories
+    extend = alpha()
+    histories += extend
+    return histories
+
+def alpha():
+    url = 'https://fantasy.premierleague.com/api/bootstrap-static/'
+    r = requests.get(url).json()
+    data = []
+    for asset in r["elements"]:
+        player = {
+            "assists": asset["assists"],
+            "bonus": asset["bonus"],
+            "bps": asset["bps"],
+            "clean_sheets": asset["clean_sheets"],
+            "creativity": asset["creativity"],
+            "element_code": asset["code"],
+            "end_cost": asset["now_cost"],
+            "goals_conceded": asset["goals_conceded"],
+            "goals_scored": asset["goals_scored"],
+            "ict_index": asset["ict_index"],
+            "influence": asset["influence"],
+            "minutes": asset["minutes"],
+            "own_goals": asset["own_goals"],
+            "penalties_missed": asset["penalties_missed"],
+            "penalties_saved": asset["penalties_saved"],
+            "red_cards": asset["red_cards"],
+            "saves": asset["saves"],
+            "season_name": "2019/20",
+            "start_cost" : asset["now_cost"],
+            "threat": asset["threat"],
+            "total_points": asset["total_points"],
+            "yellow_cards": asset["yellow_cards"],
+        }
+        data.append(player)
+    return data
 
 
 def fetch_positions():
     """ Fetch table mapping position_ids to position names. """
-    url = 'https://fantasy.premierleague.com/drf/bootstrap-static'
+    url = 'https://fantasy.premierleague.com/api/bootstrap-static/'
     r = requests.get(url)
     positions = r.json()['element_types']
     return positions
@@ -45,7 +84,7 @@ def fetch_positions():
 
 def fetch_player_info():
     """ Fetch player info for the most recent season. """
-    url = 'https://fantasy.premierleague.com/drf/bootstrap-static'
+    url = 'https://fantasy.premierleague.com/api/bootstrap-static/'
     r = requests.get(url)
     positions = []
     for player in r.json()['elements']:
@@ -60,7 +99,7 @@ def fetch_player_info():
     return positions
 
 
-def fetch_and_save_history(max_id=1000):
+def fetch_and_save_history(max_id=490):
     """ Fetch and save all historical seasons. """
     scores = pd.DataFrame(fetch_all_player_histories(max_id))
     players = pd.DataFrame(fetch_player_info())
